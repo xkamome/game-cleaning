@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安安掃地囉｜單手掃地</title>
+<style>
+  :root{--bg:#1b1f27;--text:#f3f4f6;--accent:#f0a03c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;gap:12px}
+  h1{font-size:20px;margin:0;font-weight:600}
+  #wrap{position:relative;width:min(100%,960px);aspect-ratio:16/9;user-select:none;-webkit-user-select:none;touch-action:none}
+  canvas{width:100%;height:100%;display:block;border-radius:12px;background:#9ad0f5;cursor:none}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(10,12,18,.74);border-radius:12px;text-align:center;padding:24px}
+  .overlay.hidden{display:none}
+  .overlay h2{margin:0;font-size:34px}
+  .overlay p{margin:0;line-height:1.8;max-width:540px;font-size:16px}
+  .big{font-size:56px;font-weight:800;color:var(--accent);line-height:1.1}
+  button{font:inherit;font-size:18px;padding:10px 30px;border:0;border-radius:999px;background:var(--accent);color:#1b1f27;cursor:pointer;font-weight:700}
+  button:hover{filter:brightness(1.1)}
+  .hint{font-size:13px;opacity:.75;text-align:center;line-height:1.7;max-width:960px}
+  kbd{background:#3a4150;padding:1px 7px;border-radius:4px;font-family:inherit}
+</style>
+</head>
+<body>
+<h1>🧹 安安掃地囉｜單手掃地</h1>
+<div id="wrap">
+  <canvas id="c" width="960" height="540"></canvas>
+  <div id="start" class="overlay">
+    <h2>安安掃地囉</h2>
+    <p>一隻手握著長柄掃把，把人行道上的落葉和灰塵掃進右邊的畚箕。<br>
+    掃把有重量、會晃、會下垂，握太鬆或甩太快都會失控。<br>
+    <b>30 秒</b>內掃進畚箕的越多分數越高。</p>
+    <p>🖱️ 移動滑鼠＝手的高度與左右　　🖱️ 滾輪 或 <kbd>A</kbd>/<kbd>D</kbd>＝轉手腕</p>
+    <button id="btnStart">開始掃地</button>
+  </div>
+  <div id="end" class="overlay hidden">
+    <h2>時間到！</h2>
+    <div class="big" id="finalScore">0</div>
+    <p id="finalText"></p>
+    <button id="btnAgain">再掃一次</button>
+  </div>
+</div>
+<div class="hint">滑鼠移動控制手的位置（高度、左右）・滾輪或 <kbd>A</kbd>/<kbd>D</kbd>（或 <kbd>←</kbd>/<kbd>→</kbd>）轉動手腕・<kbd>R</kbd> 重新開始</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<script>
+(() => {
+const { Engine, Bodies, Body, Composite, Constraint } = Matter;
+
+// ---------- 常數 ----------
+const W = 960, H = 540, GROUND_Y = 470;
+const SHOULDER = { x: 240, y: 252 };
+const UPPER = 108, LOWER = 108, REACH = UPPER + LOWER - 6;
+const PAN = { x1: 640, x2: 760, wallH: 92 };
+const ROUND_TIME = 30;
+const STEP = 1000 / 60, STEP2 = STEP * STEP;
+const HANDLE_LEN = 300, HANDLE_W = 8, HEAD_W = 68, HEAD_H = 16;
+const GRIP_FROM_TOP = 0.34;              // 握點在柄長的 34% 處
+const WRIST_STRENGTH = 0.018;            // 手腕扭力（越小越難控制）
+const WRIST_DAMP = 0.11;                 // 手腕阻尼（越小越會晃）
+const MAX_HAND_SPEED = 15;               // 手每格最多移動像素
+const ANGLE_LIMIT = 1.55;
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const $ = id => document.getElementById(id);
+
+// ---------- 狀態 ----------
+let engine, world, broom, grip, gripLocal, handleLocal, headLocal, headPart;
+let debris = [], puffs = [];
+let state = 'idle';
+let timeLeft = ROUND_TIME, score = 0, total = 0;
+let best = +localStorage.getItem('sweep-best') || 0;
+let hand = { x: 330, y: 255 };
+let mouse = { x: 330, y: 255 };
+let targetAngle = 0;
+const keys = {};
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+// ---------- 建世界 ----------
+function buildWorld() {
+  engine = Engine.create();
+  engine.gravity.y = 1;
+  world = engine.world;
+  debris = []; puffs = [];
+  targetAngle = 0.15;
+  hand = { x: 330, y: GROUND_Y - 228 };
+  mouse = { ...hand };
+
+  Composite.add(world, [
+    Bodies.rectangle(W / 2, GROUND_Y + 40, W * 3, 80, { isStatic: true, friction: 0.7, label: 'ground' }),
+    Bodies.rectangle(-30, H / 2, 60, H * 4, { isStatic: true }),
+    Bodies.rectangle(W + 30, H / 2, 60, H * 4, { isStatic: true }),
+    Bodies.rectangle(W / 2, -60, W * 3, 120, { isStatic: true }),
+    Bodies.rectangle(PAN.x2 + 5, GROUND_Y - PAN.wallH / 2, 10, PAN.wallH, { isStatic: true, label: 'panwall' }),
+  ]);
+
+  // 掃把：長柄 + 掃把頭，角度 0 = 柄垂直、頭朝下
+  const handle = Bodies.rectangle(0, 0, HANDLE_W, HANDLE_LEN, { density: 0.0012 });
+  const head = Bodies.rectangle(0, HANDLE_LEN / 2 + HEAD_H / 2 - 3, HEAD_W, HEAD_H, { density: 0.0045 });
+  broom = Body.create({
+    parts: [handle, head],
+    friction: 0.95, frictionStatic: 1.2, restitution: 0.02, frictionAir: 0.012, label: 'broom'
+  });
+  headPart = broom.parts[2];
+  const gripY = -HANDLE_LEN / 2 + HANDLE_LEN * GRIP_FROM_TOP;
+  gripLocal = { x: 0 - broom.position.x, y: gripY - broom.position.y };
+  handleLocal = { x: handle.position.x - broom.position.x, y: handle.position.y - broom.position.y };
+  headLocal = { x: head.position.x - broom.position.x, y: head.position.y - broom.position.y };
+  Body.setPosition(broom, { x: hand.x - gripLocal.x, y: hand.y - gripLocal.y });
+  Composite.add(world, broom);
+
+  // 手握點：有彈性的約束，所以甩快了掃把會跟不上
+  grip = Constraint.create({
+    pointA: { x: hand.x, y: hand.y }, bodyB: broom, pointB: { ...gripLocal },
+    stiffness: 0.14, damping: 0.03, length: 0
+  });
+  Composite.add(world, grip);
+
+  // 落葉與灰塵
+  const leafColors = ['#d9742b', '#c9a227', '#b8552a', '#e0a040', '#8f6a2a', '#cf8a3a'];
+  for (let i = 0; i < 30; i++) {
+    const r = rnd(5.5, 8.5);
+    const b = Bodies.circle(rnd(120, 610), GROUND_Y - rnd(8, 60), r, {
+      density: 0.0004, friction: 0.35, frictionAir: 0.035, restitution: 0.05, label: 'leaf'
+    });
+    b.vis = { kind: 'leaf', color: leafColors[i % leafColors.length], w: r * 1.6, h: r * 0.9, spin: rnd(0, Math.PI * 2) };
+    debris.push(b);
+  }
+  for (let i = 0; i < 26; i++) {
+    const r = rnd(2.4, 3.6);
+    const b = Bodies.circle(rnd(110, 620), GROUND_Y - rnd(4, 30), r, {
+      density: 0.0003, friction: 0.5, frictionAir: 0.05, restitution: 0.02, label: 'dust'
+    });
+    b.vis = { kind: 'dust', color: i % 3 ? '#8d8a80' : '#6f6c64', r };
+    debris.push(b);
+  }
+  Composite.add(world, debris);
+  total = debris.length;
+  score = 0;
+}
+
+function inPan(b) {
+  return b.position.x > PAN.x1 && b.position.x < PAN.x2 + 2 && b.position.y > GROUND_Y - PAN.wallH;
+}
+
+// ---------- 遊戲流程 ----------
+function startGame() {
+  buildWorld();
+  timeLeft = ROUND_TIME;
+  state = 'playing';
+  $('start').classList.add('hidden');
+  $('end').classList.add('hidden');
+}
+function endGame() {
+  state = 'over';
+  score = debris.filter(inPan).length;
+  const pct = Math.round(score / total * 100);
+  if (score > best) { best = score; localStorage.setItem('sweep-best', best); }
+  $('finalScore').textContent = `${score} / ${total}`;
+  $('finalText').innerHTML = `掃進畚箕 ${pct}%　最佳紀錄 ${best}<br>` +
+    (pct >= 90 ? '人行道亮晶晶，里長要頒獎了！' : pct >= 60 ? '掃得不錯，手腕再穩一點就完美。' : pct >= 30 ? '掃把一直在晃對吧？慢慢來、用掃把頭貼著地推。' : '落葉全跑光了……再試一次！');
+  $('end').classList.remove('hidden');
+}
+$('btnStart').onclick = startGame;
+$('btnAgain').onclick = startGame;
+
+// ---------- 輸入 ----------
+function toCanvas(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (cx - r.left) * W / r.width, y: (cy - r.top) * H / r.height };
+}
+const wrap = $('wrap');
+wrap.addEventListener('pointermove', e => { mouse = toCanvas(e.clientX, e.clientY); });
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  targetAngle += Math.sign(e.deltaY) * 0.11;
+}, { passive: false });
+wrap.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyR') startGame();
+  if (e.code === 'Space' && state !== 'playing') startGame();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ---------- 物理更新 ----------
+const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+function tick() {
+  // 手的目標：滑鼠位置，限制在手臂可及範圍內
+  let tx = mouse.x, ty = mouse.y;
+  const dx = tx - SHOULDER.x, dy = ty - SHOULDER.y, d = Math.hypot(dx, dy) || 1;
+  if (d > REACH) { tx = SHOULDER.x + dx / d * REACH; ty = SHOULDER.y + dy / d * REACH; }
+  if (d < 40) { tx = SHOULDER.x + dx / d * 40; ty = SHOULDER.y + dy / d * 40; }
+  ty = Math.min(ty, GROUND_Y - 14);
+  let mx = tx - hand.x, my = ty - hand.y;
+  const md = Math.hypot(mx, my);
+  if (md > MAX_HAND_SPEED) { mx *= MAX_HAND_SPEED / md; my *= MAX_HAND_SPEED / md; }
+  hand.x += mx; hand.y += my;
+  grip.pointA.x = hand.x; grip.pointA.y = hand.y;
+
+  // 手腕旋轉
+  const left = keys.KeyA || keys.KeyQ || keys.ArrowLeft, right = keys.KeyD || keys.KeyE || keys.ArrowRight;
+  if (left) targetAngle -= 0.03;
+  if (right) targetAngle += 0.03;
+  targetAngle = Math.max(-ANGLE_LIMIT, Math.min(ANGLE_LIMIT, targetAngle));
+  const err = wrapAngle(targetAngle - broom.angle);
+  broom.torque = broom.inertia * (WRIST_STRENGTH * err - WRIST_DAMP * broom.angularVelocity) / STEP2;
+
+  Engine.update(engine, STEP);
+
+  // 掃地時的灰塵煙
+  const hv = headPart.velocity;
+  const headBottomY = headPart.position.y + HEAD_H / 2 * Math.cos(broom.angle);
+  if (headBottomY > GROUND_Y - 6 && Math.abs(hv.x) > 2.2 && Math.random() < 0.6) {
+    const hw = HEAD_W / 2;
+    for (let i = 0; i < 2; i++) puffs.push({
+      x: headPart.position.x + rnd(-hw, hw) * Math.cos(broom.angle), y: GROUND_Y - rnd(0, 6),
+      vx: -hv.x * 0.25 + rnd(-0.6, 0.6), vy: rnd(-1.4, -0.3), life: 1, r: rnd(3, 7)
+    });
+  }
+  for (const p of puffs) { p.x += p.vx; p.y += p.vy; p.vy -= 0.02; p.r += 0.25; p.life -= 0.035; }
+  puffs = puffs.filter(p => p.life > 0);
+
+  if (state === 'playing') {
+    timeLeft -= STEP / 1000;
+    score = debris.filter(inPan).length;
+    if (timeLeft <= 0) { timeLeft = 0; endGame(); }
+  }
+}
+
+// ---------- 繪圖 ----------
+function drawBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  sky.addColorStop(0, '#8fc8f3'); sky.addColorStop(1, '#dbeefb');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, GROUND_Y);
+
+  // 遠景建築
+  ctx.fillStyle = '#b9c7d3';
+  [[0, 150, 90], [90, 120, 150], [240, 100, 160], [340, 160, 110], [500, 110, 150], [610, 140, 125], [750, 130, 140], [880, 150, 100]]
+    .forEach(([x, w, h]) => ctx.fillRect(x, GROUND_Y - 90 - h, w, h + 90));
+  // 樹
+  const tree = (x, s, c) => {
+    ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x - 6 * s, GROUND_Y - 120 * s, 12 * s, 120 * s);
+    ctx.fillStyle = c;
+    [[0, -150, 55], [-40, -120, 42], [42, -125, 44], [-15, -185, 40], [20, -190, 38]].forEach(([ox, oy, r]) => {
+      ctx.beginPath(); ctx.arc(x + ox * s, GROUND_Y + oy * s, r * s, 0, Math.PI * 2); ctx.fill();
+    });
+  };
+  tree(90, 1.15, '#5f9b47'); tree(560, 0.9, '#7bb35a'); tree(900, 1.05, '#689f4e');
+  // 電線桿（黃黑條紋）
+  ctx.fillStyle = '#9a9a93'; ctx.fillRect(792, 40, 18, GROUND_Y - 40);
+  for (let i = 0; i < 6; i++) { ctx.fillStyle = i % 2 ? '#222' : '#f2c21b'; ctx.fillRect(792, 300 + i * 16, 18, 16); }
+  ctx.fillStyle = '#9a9a93'; ctx.fillRect(760, 40, 82, 6);
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, 60); ctx.quadraticCurveTo(400, 110, 801, 44); ctx.stroke();
+  // 紅綠燈
+  ctx.fillStyle = '#333'; ctx.fillRect(820, 46, 16, 42);
+  ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.arc(828, 80, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#5a3e2b'; ctx.beginPath(); ctx.arc(828, 56, 5, 0, Math.PI * 2); ctx.fill();
+
+  // 人行道
+  ctx.fillStyle = '#c9bca3'; ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.fillStyle = '#b3a68c'; ctx.fillRect(0, GROUND_Y, W, 4);
+  ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, GROUND_Y + 4); ctx.lineTo(x - 30, H); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(0, GROUND_Y + 36); ctx.lineTo(W, GROUND_Y + 36); ctx.stroke();
+  ctx.fillStyle = '#6d6d6d'; ctx.fillRect(0, H - 14, W, 14);
+}
+function drawPan() {
+  // 畚箕：底板 + 背板
+  ctx.fillStyle = '#3f6fb5';
+  ctx.beginPath();
+  ctx.moveTo(PAN.x1 - 8, GROUND_Y); ctx.lineTo(PAN.x2 + 10, GROUND_Y);
+  ctx.lineTo(PAN.x2 + 10, GROUND_Y - PAN.wallH); ctx.lineTo(PAN.x2, GROUND_Y - PAN.wallH);
+  ctx.lineTo(PAN.x2, GROUND_Y - 3); ctx.lineTo(PAN.x1 - 8, GROUND_Y - 1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2d5390'; ctx.fillRect(PAN.x2, GROUND_Y - PAN.wallH, 10, 6);
+  // 把手
+  ctx.strokeStyle = '#2d5390'; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(PAN.x2 + 6, GROUND_Y - PAN.wallH + 2); ctx.lineTo(PAN.x2 + 6, GROUND_Y - PAN.wallH - 60); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = 'bold 15px system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('畚箕', (PAN.x1 + PAN.x2) / 2, GROUND_Y + 28);
+}
+function drawDebris() {
+  for (const b of debris) {
+    const v = b.vis;
+    ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle + (v.spin || 0));
+    if (v.kind === 'leaf') {
+      ctx.fillStyle = v.color;
+      ctx.beginPath(); ctx.ellipse(0, 0, v.w, v.h, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-v.w, 0); ctx.lineTo(v.w + 4, 0); ctx.stroke();
+    } else {
+      ctx.fillStyle = v.color;
+      ctx.beginPath(); ctx.arc(0, 0, v.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+function drawCharacter() {
+  const sx = SHOULDER.x, sy = SHOULDER.y;
+  // 腿
+  ctx.fillStyle = '#3a3f4a';
+  ctx.fillRect(sx - 38, sy + 110, 22, GROUND_Y - sy - 110);
+  ctx.fillRect(sx - 8, sy + 110, 22, GROUND_Y - sy - 110);
+  ctx.fillStyle = '#222'; ctx.fillRect(sx - 42, GROUND_Y - 8, 30, 8); ctx.fillRect(sx - 12, GROUND_Y - 8, 32, 8);
+  // 身體（背心）
+  ctx.fillStyle = '#4b5566';
+  ctx.beginPath(); ctx.roundRect(sx - 48, sy - 14, 72, 130, 16); ctx.fill();
+  ctx.fillStyle = '#5c6a80'; ctx.beginPath(); ctx.roundRect(sx - 38, sy - 8, 52, 118, 12); ctx.fill();
+  ctx.fillStyle = '#e9eef5'; ctx.fillRect(sx - 30, sy + 20, 36, 5); ctx.fillRect(sx - 30, sy + 32, 24, 5);
+  // 另一隻手（不動）
+  ctx.strokeStyle = '#4b5566'; ctx.lineWidth = 18; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(sx - 40, sy); ctx.lineTo(sx - 52, sy + 90); ctx.stroke();
+  ctx.fillStyle = '#e8b894'; ctx.beginPath(); ctx.arc(sx - 54, sy + 98, 10, 0, Math.PI * 2); ctx.fill();
+  // 頭與帽子
+  ctx.fillStyle = '#e8b894'; ctx.beginPath(); ctx.arc(sx - 10, sy - 48, 30, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.arc(sx - 10, sy - 56, 30, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#d33a3a'; ctx.beginPath(); ctx.roundRect(sx - 44, sy - 62, 70, 14, 7); ctx.fill();
+  ctx.fillRect(sx - 2, sy - 60, 44, 8);
+  ctx.fillStyle = '#2b2b2b';
+  ctx.beginPath(); ctx.arc(sx + 4, sy - 44, 2.6, 0, Math.PI * 2); ctx.fill();
+  // 持掃把的手臂：兩段式 IK
+  let hx = hand.x - sx, hy = hand.y - sy;
+  let d = Math.hypot(hx, hy); d = Math.max(Math.abs(UPPER - LOWER) + 1, Math.min(UPPER + LOWER - 1, d));
+  const base = Math.atan2(hy, hx);
+  const a = Math.acos((UPPER * UPPER + d * d - LOWER * LOWER) / (2 * UPPER * d));
+  const ex = sx + Math.cos(base + a) * UPPER, ey = sy + Math.sin(base + a) * UPPER;
+  ctx.strokeStyle = '#4b5566'; ctx.lineWidth = 20; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.strokeStyle = '#e8b894'; ctx.lineWidth = 16;
+  ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+  ctx.fillStyle = '#4b5566'; ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.fill();
+}
+function drawBroom() {
+  ctx.save();
+  ctx.translate(broom.position.x, broom.position.y); ctx.rotate(broom.angle);
+  // 柄（紅色，像照片）
+  ctx.fillStyle = '#c8322b';
+  ctx.beginPath(); ctx.roundRect(handleLocal.x - HANDLE_W / 2, handleLocal.y - HANDLE_LEN / 2, HANDLE_W, HANDLE_LEN, 4); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(handleLocal.x - 1, handleLocal.y - HANDLE_LEN / 2 + 6, 2, HANDLE_LEN - 12);
+  ctx.fillStyle = '#8c1f1a'; ctx.beginPath(); ctx.roundRect(handleLocal.x - HANDLE_W / 2 - 1, handleLocal.y - HANDLE_LEN / 2 - 2, HANDLE_W + 2, 14, 4); ctx.fill();
+  // 掃把頭：木塊 + 鬃毛
+  ctx.fillStyle = '#9c7343';
+  ctx.beginPath(); ctx.roundRect(headLocal.x - HEAD_W / 2, headLocal.y - HEAD_H / 2 - 6, HEAD_W, HEAD_H - 2, 4); ctx.fill();
+  ctx.fillStyle = '#5f6b3c';
+  for (let i = 0; i < 11; i++) {
+    const bx = headLocal.x - HEAD_W / 2 + 3 + i * (HEAD_W - 6) / 10;
+    ctx.fillRect(bx - 2, headLocal.y + HEAD_H / 2 - 10, 4, 10);
+  }
+  ctx.fillStyle = '#7f8e4f';
+  for (let i = 0; i < 10; i++) {
+    const bx = headLocal.x - HEAD_W / 2 + 6 + i * (HEAD_W - 6) / 10;
+    ctx.fillRect(bx - 1.5, headLocal.y + HEAD_H / 2 - 9, 3, 9);
+  }
+  ctx.restore();
+  // 手掌（蓋在柄上）
+  ctx.fillStyle = '#e8b894';
+  ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 13, 11, broom.angle, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(hand.x, hand.y, 13, 11, broom.angle, 0, Math.PI * 2); ctx.stroke();
+}
+function drawPuffs() {
+  for (const p of puffs) {
+    ctx.fillStyle = `rgba(190,180,160,${p.life * 0.5})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function drawHUD() {
+  ctx.fillStyle = 'rgba(20,24,32,.55)';
+  ctx.beginPath(); ctx.roundRect(14, 12, 300, 62, 12); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.fillText(`⏱ ${Math.ceil(timeLeft)}`, 28, 40);
+  ctx.fillText(`🧹 ${score} / ${total}`, 120, 40);
+  ctx.font = '13px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)';
+  ctx.fillText(`最佳 ${best}　手腕角度 ${(targetAngle * 180 / Math.PI).toFixed(0)}°`, 28, 62);
+  const barW = 272, frac = Math.max(0, timeLeft / ROUND_TIME);
+  ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(28, 66, barW, 4);
+  ctx.fillStyle = frac < 0.2 ? '#ff5e5e' : '#f0a03c'; ctx.fillRect(28, 66, barW * frac, 4);
+
+  // 手臂可及範圍與目標游標
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([5, 6]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(SHOULDER.x, SHOULDER.y, REACH, -1.6, 1.7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mouse.x - 11, mouse.y); ctx.lineTo(mouse.x + 11, mouse.y);
+  ctx.moveTo(mouse.x, mouse.y - 11); ctx.lineTo(mouse.x, mouse.y + 11); ctx.stroke();
+}
+function draw() {
+  drawBackground();
+  drawPan();
+  drawCharacter();
+  drawDebris();
+  drawBroom();
+  drawPuffs();
+  drawHUD();
+}
+
+// ---------- 主迴圈 ----------
+let last = performance.now(), acc = 0;
+function frame(now) {
+  acc += Math.min(now - last, 100); last = now;
+  while (acc >= STEP) { tick(); acc -= STEP; }
+  draw();
+  requestAnimationFrame(frame);
+}
+buildWorld();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
