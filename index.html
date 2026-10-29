@@ -2,24 +2,44 @@
 <html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>安安掃地囉｜單手掃地</title>
 <style>
-  :root{--bg:#1b1f27;--text:#f3f4f6;--accent:#f0a03c}
+  :root{--bg:#1b1f27;--text:#f3f4f6;--accent:#f0a03c;--chrome:140px}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px;gap:12px}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh;padding:16px;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));gap:12px;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
   h1{font-size:20px;margin:0;font-weight:600}
-  #wrap{position:relative;width:min(100%,960px);aspect-ratio:16/9;user-select:none;-webkit-user-select:none;touch-action:none}
-  canvas{width:100%;height:100%;display:block;border-radius:12px;background:#9ad0f5;cursor:none}
+  /* 橫向世界 16:9；寬度受視窗高度限制，避免需要捲動 */
+  #wrap{position:relative;width:min(100%,960px,calc((100vh - var(--chrome)) * 16 / 9));width:min(100%,960px,calc((100dvh - var(--chrome)) * 16 / 9));aspect-ratio:16/9;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+  /* 直向（手機直立）世界 9:16 */
+  @media (orientation: portrait){
+    #wrap{aspect-ratio:9/16;width:min(100%,540px,calc((100vh - var(--chrome)) * 9 / 16));width:min(100%,540px,calc((100dvh - var(--chrome)) * 9 / 16))}
+  }
+  canvas{width:100%;height:100%;display:block;border-radius:12px;background:#9ad0f5;cursor:none;touch-action:none}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(10,12,18,.74);border-radius:12px;text-align:center;padding:24px}
   .overlay.hidden{display:none}
   .overlay h2{margin:0;font-size:34px}
   .overlay p{margin:0;line-height:1.8;max-width:540px;font-size:16px}
   .big{font-size:56px;font-weight:800;color:var(--accent);line-height:1.1}
-  button{font:inherit;font-size:18px;padding:10px 30px;border:0;border-radius:999px;background:var(--accent);color:#1b1f27;cursor:pointer;font-weight:700}
+  button{font:inherit;font-size:18px;padding:10px 30px;border:0;border-radius:999px;background:var(--accent);color:#1b1f27;cursor:pointer;font-weight:700;touch-action:manipulation}
   button:hover{filter:brightness(1.1)}
   .hint{font-size:13px;opacity:.75;text-align:center;line-height:1.7;max-width:960px}
   kbd{background:#3a4150;padding:1px 7px;border-radius:4px;font-family:inherit}
+  /* 依輸入裝置顯示對應說明 */
+  .touch-only{display:none}
+  body.touch .touch-only{display:block}
+  body.touch .mouse-only{display:none}
+  @media (max-width:600px){
+    :root{--chrome:100px}
+    body{padding:10px;gap:8px}
+    h1{font-size:16px}
+    .overlay{padding:18px;gap:12px}
+    .overlay h2{font-size:26px}
+    .overlay p{font-size:14px;line-height:1.65}
+    .big{font-size:44px}
+    .hint{font-size:12px;line-height:1.5}
+  }
 </style>
 </head>
 <body>
@@ -31,7 +51,8 @@
     <p>一隻手握著長柄掃把，把人行道上的落葉和灰塵掃進右邊的畚箕。<br>
     掃把有重量、會晃、會下垂，握太鬆或甩太快都會失控。<br>
     <b>30 秒</b>內掃進畚箕的越多分數越高。</p>
-    <p>🖱️ 移動滑鼠＝手的高度與左右　　🖱️ 滾輪 或 <kbd>A</kbd>/<kbd>D</kbd>＝轉手腕</p>
+    <p class="mouse-only">🖱️ 移動滑鼠＝手的高度與左右　　🖱️ 滾輪 或 <kbd>A</kbd>/<kbd>D</kbd>＝轉手腕</p>
+    <p class="touch-only">👆 滑動＝移動手　　👆 點一下左／右半邊＝掃把頭往左／右擺一格<br>👆 長按左／右半邊＝持續轉手腕（可一指滑動、一指長按）</p>
     <button id="btnStart">開始掃地</button>
   </div>
   <div id="end" class="overlay hidden">
@@ -41,7 +62,8 @@
     <button id="btnAgain">再掃一次</button>
   </div>
 </div>
-<div class="hint">滑鼠移動控制手的位置（高度、左右）・滾輪或 <kbd>A</kbd>/<kbd>D</kbd>（或 <kbd>←</kbd>/<kbd>→</kbd>）轉動手腕・<kbd>R</kbd> 重新開始</div>
+<div class="hint mouse-only">滑鼠移動控制手的位置（高度、左右）・滾輪或 <kbd>A</kbd>/<kbd>D</kbd>（或 <kbd>←</kbd>/<kbd>→</kbd>）轉動手腕・<kbd>R</kbd> 重新開始</div>
+<div class="hint touch-only">滑動＝移動手・點左／右半邊＝掃把頭往左／右擺・長按左／右半邊＝持續轉手腕</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
 <script>
@@ -49,10 +71,7 @@
 const { Engine, Bodies, Body, Composite, Constraint } = Matter;
 
 // ---------- 常數 ----------
-const W = 960, H = 540, GROUND_Y = 470;
-const SHOULDER = { x: 240, y: 252 };
 const UPPER = 108, LOWER = 108, REACH = UPPER + LOWER - 6;
-const PAN = { x1: 640, x2: 760, wallH: 92 };
 const ROUND_TIME = 30;
 const STEP = 1000 / 60, STEP2 = STEP * STEP;
 const HANDLE_LEN = 300, HANDLE_W = 8, HEAD_W = 68, HEAD_H = 16;
@@ -62,9 +81,37 @@ const WRIST_DAMP = 0.11;                 // 手腕阻尼（越小越會晃）
 const MAX_HAND_SPEED = 15;               // 手每格最多移動像素
 const ANGLE_LIMIT = 1.55;
 
+// ---------- 版面：橫向 16:9 / 直向 9:16 ----------
+const LAYOUTS = {
+  landscape: { W: 960, H: 540, GROUND_Y: 470, SHOULDER: { x: 240, y: 252 }, PAN: { x1: 640, x2: 760, wallH: 92 }, DEBRIS_X: [115, 615] },
+  portrait:  { W: 540, H: 960, GROUND_Y: 890, SHOULDER: { x: 130, y: 672 }, PAN: { x1: 400, x2: 500, wallH: 92 }, DEBRIS_X: [70, 370] },
+};
+let W, H, GROUND_Y, SHOULDER, PAN, DEBRIS_X;
+
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const $ = id => document.getElementById(id);
+const portraitMQ = matchMedia('(orientation: portrait)');
+const isTouch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+if (isTouch) document.body.classList.add('touch');
+
+function applyLayout() {
+  ({ W, H, GROUND_Y, SHOULDER, PAN, DEBRIS_X } = LAYOUTS[portraitMQ.matches ? 'portrait' : 'landscape']);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = W * dpr; canvas.height = H * dpr;      // 重設尺寸會清掉 transform，之後再設
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// 手機上盡量鎖成直向（Android 需全螢幕；iOS 不支援則略過）
+function lockPortrait() {
+  if (!isTouch) return;
+  try {
+    const el = document.documentElement;
+    const fs = document.fullscreenElement ? Promise.resolve()
+      : el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : Promise.reject();
+    fs.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait')).catch(() => {});
+  } catch (_) { /* 不支援就維持原狀 */ }
+}
 
 // ---------- 狀態 ----------
 let engine, world, broom, grip, gripLocal, handleLocal, headLocal, headPart;
@@ -77,6 +124,7 @@ let mouse = { x: 330, y: 255 };
 let targetAngle = 0;
 const keys = {};
 const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // ---------- 建世界 ----------
 function buildWorld() {
@@ -85,7 +133,7 @@ function buildWorld() {
   world = engine.world;
   debris = []; puffs = [];
   targetAngle = 0.15;
-  hand = { x: 330, y: GROUND_Y - 228 };
+  hand = { x: SHOULDER.x + 90, y: GROUND_Y - 228 };
   mouse = { ...hand };
 
   Composite.add(world, [
@@ -122,7 +170,7 @@ function buildWorld() {
   const leafColors = ['#d9742b', '#c9a227', '#b8552a', '#e0a040', '#8f6a2a', '#cf8a3a'];
   for (let i = 0; i < 30; i++) {
     const r = rnd(5.5, 8.5);
-    const b = Bodies.circle(rnd(120, 610), GROUND_Y - rnd(8, 60), r, {
+    const b = Bodies.circle(rnd(DEBRIS_X[0] + 5, DEBRIS_X[1] - 5), GROUND_Y - rnd(8, 60), r, {
       density: 0.0004, friction: 0.35, frictionAir: 0.035, restitution: 0.05, label: 'leaf'
     });
     b.vis = { kind: 'leaf', color: leafColors[i % leafColors.length], w: r * 1.6, h: r * 0.9, spin: rnd(0, Math.PI * 2) };
@@ -130,7 +178,7 @@ function buildWorld() {
   }
   for (let i = 0; i < 26; i++) {
     const r = rnd(2.4, 3.6);
-    const b = Bodies.circle(rnd(110, 620), GROUND_Y - rnd(4, 30), r, {
+    const b = Bodies.circle(rnd(DEBRIS_X[0], DEBRIS_X[1]), GROUND_Y - rnd(4, 30), r, {
       density: 0.0003, friction: 0.5, frictionAir: 0.05, restitution: 0.02, label: 'dust'
     });
     b.vis = { kind: 'dust', color: i % 3 ? '#8d8a80' : '#6f6c64', r };
@@ -163,8 +211,14 @@ function endGame() {
     (pct >= 90 ? '人行道亮晶晶，里長要頒獎了！' : pct >= 60 ? '掃得不錯，手腕再穩一點就完美。' : pct >= 30 ? '掃把一直在晃對吧？慢慢來、用掃把頭貼著地推。' : '落葉全跑光了……再試一次！');
   $('end').classList.remove('hidden');
 }
-$('btnStart').onclick = startGame;
+$('btnStart').onclick = () => { lockPortrait(); startGame(); };
 $('btnAgain').onclick = startGame;
+
+// 轉向時世界版面不同，重建世界；進行中的回合重新開始
+portraitMQ.addEventListener('change', () => {
+  applyLayout();
+  if (state === 'playing') startGame(); else buildWorld();
+});
 
 // ---------- 輸入 ----------
 function toCanvas(cx, cy) {
@@ -172,7 +226,11 @@ function toCanvas(cx, cy) {
   return { x: (cx - r.left) * W / r.width, y: (cy - r.top) * H / r.height };
 }
 const wrap = $('wrap');
-wrap.addEventListener('pointermove', e => { mouse = toCanvas(e.clientX, e.clientY); });
+
+// 滑鼠：游標位置就是手的目標
+wrap.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') mouse = toCanvas(e.clientX, e.clientY);
+});
 wrap.addEventListener('wheel', e => {
   e.preventDefault();
   targetAngle += Math.sign(e.deltaY) * 0.11;
@@ -186,10 +244,53 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
+// 觸控（手指／觸控筆）：
+//   滑動 = 移動手（相對位移，手指不必蓋在手上）
+//   單點左／右半邊 = 掃把頭往左／右擺一格
+//   長按左／右半邊 = 持續轉手腕；每根手指獨立判斷，可一指滑、一指按
+const HOLD_MS = 300, MOVE_PX = 10, TAP_STEP = 0.12, HOLD_STEP = 0.03, DRAG_GAIN = 1.25;
+const touches = new Map();                 // pointerId -> 手勢狀態
+// 掃把頭在柄的 +y 端；角度減少 → 頭往右，角度增加 → 頭往左
+const headDir = clientX => {
+  const r = canvas.getBoundingClientRect();
+  return clientX < r.left + r.width / 2 ? +1 : -1;
+};
+canvas.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse') return;
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  const t = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, mode: 'pending', dir: headDir(e.clientX), timer: 0 };
+  t.timer = setTimeout(() => { if (t.mode === 'pending') t.mode = 'hold'; }, HOLD_MS);
+  touches.set(e.pointerId, t);
+});
+canvas.addEventListener('pointermove', e => {
+  const t = touches.get(e.pointerId);
+  if (!t) return;
+  if (t.mode === 'pending' && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > MOVE_PX) {
+    t.mode = 'drag'; clearTimeout(t.timer);
+  }
+  if (t.mode === 'drag') {
+    const r = canvas.getBoundingClientRect(), k = W / r.width * DRAG_GAIN;
+    mouse.x = clamp(mouse.x + (e.clientX - t.lx) * k, 0, W);
+    mouse.y = clamp(mouse.y + (e.clientY - t.ly) * k, 0, H);
+  }
+  t.lx = e.clientX; t.ly = e.clientY;
+});
+function endTouch(e) {
+  const t = touches.get(e.pointerId);
+  if (!t) return;
+  clearTimeout(t.timer);
+  touches.delete(e.pointerId);
+  if (t.mode === 'pending') targetAngle += t.dir * TAP_STEP;   // 放開時還沒變成滑動或長按 → 單點
+}
+canvas.addEventListener('pointerup', endTouch);
+canvas.addEventListener('pointercancel', endTouch);
+canvas.addEventListener('lostpointercapture', endTouch);
+
 // ---------- 物理更新 ----------
 const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 function tick() {
-  // 手的目標：滑鼠位置，限制在手臂可及範圍內
+  // 手的目標：游標位置，限制在手臂可及範圍內
   let tx = mouse.x, ty = mouse.y;
   const dx = tx - SHOULDER.x, dy = ty - SHOULDER.y, d = Math.hypot(dx, dy) || 1;
   if (d > REACH) { tx = SHOULDER.x + dx / d * REACH; ty = SHOULDER.y + dy / d * REACH; }
@@ -201,10 +302,11 @@ function tick() {
   hand.x += mx; hand.y += my;
   grip.pointA.x = hand.x; grip.pointA.y = hand.y;
 
-  // 手腕旋轉
+  // 手腕旋轉：鍵盤 + 觸控長按
   const left = keys.KeyA || keys.KeyQ || keys.ArrowLeft, right = keys.KeyD || keys.KeyE || keys.ArrowRight;
   if (left) targetAngle -= 0.03;
   if (right) targetAngle += 0.03;
+  for (const t of touches.values()) if (t.mode === 'hold') targetAngle += t.dir * HOLD_STEP;
   targetAngle = Math.max(-ANGLE_LIMIT, Math.min(ANGLE_LIMIT, targetAngle));
   const err = wrapAngle(targetAngle - broom.angle);
   broom.torque = broom.inertia * (WRIST_STRENGTH * err - WRIST_DAMP * broom.angularVelocity) / STEP2;
@@ -233,14 +335,24 @@ function tick() {
 
 // ---------- 繪圖 ----------
 function drawBackground() {
+  const kx = W / 960;                      // 背景以 960 寬設計，依版面寬度縮放 x
   const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
   sky.addColorStop(0, '#8fc8f3'); sky.addColorStop(1, '#dbeefb');
   ctx.fillStyle = sky; ctx.fillRect(0, 0, W, GROUND_Y);
 
+  // 雲
+  ctx.fillStyle = 'rgba(255,255,255,.8)';
+  [[0.15, 0.12, 1], [0.5, 0.22, 0.8], [0.72, 0.1, 0.7]].forEach(([fx, fy, s]) => {
+    const cx = fx * W, cy = fy * GROUND_Y;
+    [[0, 0, 26], [-28, 8, 18], [30, 6, 20]].forEach(([ox, oy, r]) => {
+      ctx.beginPath(); ctx.arc(cx + ox * s, cy + oy * s, r * s, 0, Math.PI * 2); ctx.fill();
+    });
+  });
+
   // 遠景建築
   ctx.fillStyle = '#b9c7d3';
   [[0, 150, 90], [90, 120, 150], [240, 100, 160], [340, 160, 110], [500, 110, 150], [610, 140, 125], [750, 130, 140], [880, 150, 100]]
-    .forEach(([x, w, h]) => ctx.fillRect(x, GROUND_Y - 90 - h, w, h + 90));
+    .forEach(([x, w, h]) => ctx.fillRect(x * kx, GROUND_Y - 90 - h, w * kx + 1, h + 90));
   // 樹
   const tree = (x, s, c) => {
     ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x - 6 * s, GROUND_Y - 120 * s, 12 * s, 120 * s);
@@ -249,23 +361,24 @@ function drawBackground() {
       ctx.beginPath(); ctx.arc(x + ox * s, GROUND_Y + oy * s, r * s, 0, Math.PI * 2); ctx.fill();
     });
   };
-  tree(90, 1.15, '#5f9b47'); tree(560, 0.9, '#7bb35a'); tree(900, 1.05, '#689f4e');
+  tree(90 * kx, 1.15, '#5f9b47'); tree(560 * kx, 0.9, '#7bb35a'); tree(930 * kx, 1.05, '#689f4e');
   // 電線桿（黃黑條紋）
-  ctx.fillStyle = '#9a9a93'; ctx.fillRect(792, 40, 18, GROUND_Y - 40);
-  for (let i = 0; i < 6; i++) { ctx.fillStyle = i % 2 ? '#222' : '#f2c21b'; ctx.fillRect(792, 300 + i * 16, 18, 16); }
-  ctx.fillStyle = '#9a9a93'; ctx.fillRect(760, 40, 82, 6);
+  const px = Math.round(792 * kx), poleTop = GROUND_Y - 430;
+  ctx.fillStyle = '#9a9a93'; ctx.fillRect(px, poleTop, 18, GROUND_Y - poleTop);
+  for (let i = 0; i < 6; i++) { ctx.fillStyle = i % 2 ? '#222' : '#f2c21b'; ctx.fillRect(px, GROUND_Y - 170 + i * 16, 18, 16); }
+  ctx.fillStyle = '#9a9a93'; ctx.fillRect(px - 32, poleTop, 82, 6);
   ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(0, 60); ctx.quadraticCurveTo(400, 110, 801, 44); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, poleTop + 20); ctx.quadraticCurveTo(px * 0.5, poleTop + 70, px + 9, poleTop + 4); ctx.stroke();
   // 紅綠燈
-  ctx.fillStyle = '#333'; ctx.fillRect(820, 46, 16, 42);
-  ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.arc(828, 80, 5, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#5a3e2b'; ctx.beginPath(); ctx.arc(828, 56, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#333'; ctx.fillRect(px + 28, poleTop + 6, 16, 42);
+  ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.arc(px + 36, poleTop + 40, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#5a3e2b'; ctx.beginPath(); ctx.arc(px + 36, poleTop + 16, 5, 0, Math.PI * 2); ctx.fill();
 
   // 人行道
   ctx.fillStyle = '#c9bca3'; ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
   ctx.fillStyle = '#b3a68c'; ctx.fillRect(0, GROUND_Y, W, 4);
   ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1;
-  for (let x = 0; x < W; x += 60) { ctx.beginPath(); ctx.moveTo(x, GROUND_Y + 4); ctx.lineTo(x - 30, H); ctx.stroke(); }
+  for (let x = 0; x < W + 30; x += 60) { ctx.beginPath(); ctx.moveTo(x, GROUND_Y + 4); ctx.lineTo(x - 30, H); ctx.stroke(); }
   ctx.beginPath(); ctx.moveTo(0, GROUND_Y + 36); ctx.lineTo(W, GROUND_Y + 36); ctx.stroke();
   ctx.fillStyle = '#6d6d6d'; ctx.fillRect(0, H - 14, W, 14);
 }
@@ -387,6 +500,12 @@ function drawHUD() {
   ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(mouse.x - 11, mouse.y); ctx.lineTo(mouse.x + 11, mouse.y);
   ctx.moveTo(mouse.x, mouse.y - 11); ctx.lineTo(mouse.x, mouse.y + 11); ctx.stroke();
+
+  // 觸控：長按時標示轉動方向
+  for (const t of touches.values()) if (t.mode === 'hold') {
+    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = 'bold 28px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(t.dir > 0 ? '⟲ 掃把頭往左' : '⟳ 掃把頭往右', W / 2, 110);
+  }
 }
 function draw() {
   drawBackground();
@@ -406,6 +525,7 @@ function frame(now) {
   draw();
   requestAnimationFrame(frame);
 }
+applyLayout();
 buildWorld();
 requestAnimationFrame(frame);
 })();
