@@ -5,16 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>安安掃地囉｜單手掃地</title>
 <style>
-  :root{--bg:#1b1f27;--text:#f3f4f6;--accent:#f0a03c;--chrome:140px}
+  :root{--bg:#1b1f27;--text:#f3f4f6;--accent:#f0a03c;--ctrlH:clamp(150px,27vh,220px);--side:150px}
   *{box-sizing:border-box}
   html,body{height:100%}
   body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,"Noto Sans TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;min-height:100dvh;padding:16px;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));gap:12px;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
   h1{font-size:20px;margin:0;font-weight:600}
-  /* 橫向世界 16:9；寬度受視窗高度限制，避免需要捲動 */
-  #wrap{position:relative;width:min(100%,960px,calc((100vh - var(--chrome)) * 16 / 9));width:min(100%,960px,calc((100dvh - var(--chrome)) * 16 / 9));aspect-ratio:16/9;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
-  /* 直向（手機直立）世界 9:16 */
+
+  /* #game 包住畫面與觸控控制區；寬度受視窗高度限制，避免需要捲動 */
+  #game{display:flex;flex-direction:column;align-items:center;gap:10px;
+    width:min(100vw - 32px,960px,(100vh - 140px) * 16 / 9);width:min(100vw - 32px,960px,(100dvh - 140px) * 16 / 9)}
+  #wrap{position:relative;width:100%;aspect-ratio:16/9;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
   @media (orientation: portrait){
-    #wrap{aspect-ratio:9/16;width:min(100%,540px,calc((100vh - var(--chrome)) * 9 / 16));width:min(100%,540px,calc((100dvh - var(--chrome)) * 9 / 16))}
+    #game{width:min(100vw - 32px,540px,(100vh - 140px) * 9 / 10);width:min(100vw - 32px,540px,(100dvh - 140px) * 9 / 10)}
+    #wrap{aspect-ratio:9/10}
   }
   canvas{width:100%;height:100%;display:block;border-radius:12px;background:#9ad0f5;cursor:none;touch-action:none}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(10,12,18,.74);border-radius:12px;text-align:center;padding:24px}
@@ -26,44 +29,70 @@
   button:hover{filter:brightness(1.1)}
   .hint{font-size:13px;opacity:.75;text-align:center;line-height:1.7;max-width:960px}
   kbd{background:#3a4150;padding:1px 7px;border-radius:4px;font-family:inherit}
+
+  /* 觸控控制區：左＝移動手的觸控板，右＝手腕滑桿 */
+  #controls{display:none;width:100%;height:var(--ctrlH);gap:10px}
+  .ctrl{position:relative;border-radius:14px;background:#262c37;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  .ctrl canvas{background:transparent;border-radius:14px;cursor:default}
+  .ctrl span{position:absolute;left:10px;top:7px;font-size:12px;opacity:.6;pointer-events:none}
+  #padBox{flex:1.25}
+  #wristBox{flex:1}
+
   /* 依輸入裝置顯示對應說明 */
   .touch-only{display:none}
   body.touch .touch-only{display:block}
   body.touch .mouse-only{display:none}
-  @media (max-width:600px){
-    :root{--chrome:100px}
-    body{padding:10px;gap:8px}
-    h1{font-size:16px}
-    .overlay{padding:18px;gap:12px}
-    .overlay h2{font-size:26px}
-    .overlay p{font-size:14px;line-height:1.65}
-    .big{font-size:44px}
-    .hint{font-size:12px;line-height:1.5}
+  body.touch #controls{display:flex}
+  body.touch h1, body.touch .hint{display:none}
+  body.touch{padding:10px;padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));justify-content:center}
+
+  @media (orientation: portrait){
+    body.touch #game{width:min(100vw - 20px,540px,(100vh - 40px - var(--ctrlH)) * 9 / 10);width:min(100vw - 20px,540px,(100dvh - 40px - var(--ctrlH)) * 9 / 10)}
+  }
+  /* 手機橫拿：觸控板在左、滑桿在右，畫面在中間 */
+  @media (orientation: landscape){
+    body.touch #game{flex-direction:row;width:auto}
+    body.touch #controls{display:contents}
+    body.touch #padBox{order:-1;flex:none;width:var(--side);height:min(72vh,260px)}
+    body.touch #wristBox{order:1;flex:none;width:var(--side);height:120px}
+    body.touch #wrap{width:min(100vw - 2 * var(--side) - 40px,960px,(100vh - 24px) * 16 / 9);width:min(100vw - 2 * var(--side) - 40px,960px,(100dvh - 24px) * 16 / 9)}
+  }
+  @media (max-width:600px), (max-height:500px){
+    .overlay{padding:16px;gap:10px}
+    .overlay h2{font-size:24px}
+    .overlay p{font-size:13.5px;line-height:1.6}
+    .big{font-size:42px}
+    button{font-size:16px;padding:9px 26px}
   }
 </style>
 </head>
 <body>
 <h1>🧹 安安掃地囉｜單手掃地</h1>
-<div id="wrap">
-  <canvas id="c" width="960" height="540"></canvas>
-  <div id="start" class="overlay">
-    <h2>安安掃地囉</h2>
-    <p>一隻手握著長柄掃把，把人行道上的落葉和灰塵掃進右邊的畚箕。<br>
-    掃把有重量、會晃、會下垂，握太鬆或甩太快都會失控。<br>
-    <b>30 秒</b>內掃進畚箕的越多分數越高。</p>
-    <p class="mouse-only">🖱️ 移動滑鼠＝手的高度與左右　　🖱️ 滾輪 或 <kbd>A</kbd>/<kbd>D</kbd>＝轉手腕</p>
-    <p class="touch-only">👆 滑動＝移動手　　👆 點一下左／右半邊＝掃把頭往左／右擺一格<br>👆 長按左／右半邊＝持續轉手腕（可一指滑動、一指長按）</p>
-    <button id="btnStart">開始掃地</button>
+<div id="game">
+  <div id="wrap">
+    <canvas id="c" width="960" height="540"></canvas>
+    <div id="start" class="overlay">
+      <h2>安安掃地囉</h2>
+      <p>一隻手握著長柄掃把，把人行道上的落葉和灰塵掃進右邊的畚箕。<br>
+      掃把有重量、會晃、會下垂，握太鬆或甩太快都會失控。<br>
+      <b>30 秒</b>內掃進畚箕的越多分數越高。</p>
+      <p class="mouse-only">🖱️ 移動滑鼠＝手的高度與左右　　🖱️ 滾輪 或 <kbd>A</kbd>/<kbd>D</kbd>＝轉手腕</p>
+      <p class="touch-only">👈 左拇指按觸控板＝手的位置（觸控板就是手搆得到的範圍）<br>👉 右拇指拖滑桿＝掃把頭往左／往右的角度</p>
+      <button id="btnStart">開始掃地</button>
+    </div>
+    <div id="end" class="overlay hidden">
+      <h2>時間到！</h2>
+      <div class="big" id="finalScore">0</div>
+      <p id="finalText"></p>
+      <button id="btnAgain">再掃一次</button>
+    </div>
   </div>
-  <div id="end" class="overlay hidden">
-    <h2>時間到！</h2>
-    <div class="big" id="finalScore">0</div>
-    <p id="finalText"></p>
-    <button id="btnAgain">再掃一次</button>
+  <div id="controls">
+    <div class="ctrl" id="padBox"><canvas id="pad"></canvas><span>移動手</span></div>
+    <div class="ctrl" id="wristBox"><canvas id="wrist"></canvas><span>手腕（掃把頭方向）</span></div>
   </div>
 </div>
 <div class="hint mouse-only">滑鼠移動控制手的位置（高度、左右）・滾輪或 <kbd>A</kbd>/<kbd>D</kbd>（或 <kbd>←</kbd>/<kbd>→</kbd>）轉動手腕・<kbd>R</kbd> 重新開始</div>
-<div class="hint touch-only">滑動＝移動手・點左／右半邊＝掃把頭往左／右擺・長按左／右半邊＝持續轉手腕</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
 <script>
@@ -81,10 +110,10 @@ const WRIST_DAMP = 0.11;                 // 手腕阻尼（越小越會晃）
 const MAX_HAND_SPEED = 15;               // 手每格最多移動像素
 const ANGLE_LIMIT = 1.55;
 
-// ---------- 版面：橫向 16:9 / 直向 9:16 ----------
+// ---------- 版面：橫向 16:9 / 直向 9:10（直向裁掉多餘的天空） ----------
 const LAYOUTS = {
   landscape: { W: 960, H: 540, GROUND_Y: 470, SHOULDER: { x: 240, y: 252 }, PAN: { x1: 640, x2: 760, wallH: 92 }, DEBRIS_X: [115, 615] },
-  portrait:  { W: 540, H: 960, GROUND_Y: 890, SHOULDER: { x: 130, y: 672 }, PAN: { x1: 400, x2: 500, wallH: 92 }, DEBRIS_X: [70, 370] },
+  portrait:  { W: 540, H: 600, GROUND_Y: 530, SHOULDER: { x: 130, y: 312 }, PAN: { x1: 400, x2: 500, wallH: 92 }, DEBRIS_X: [70, 370] },
 };
 let W, H, GROUND_Y, SHOULDER, PAN, DEBRIS_X;
 
@@ -94,10 +123,11 @@ const $ = id => document.getElementById(id);
 const portraitMQ = matchMedia('(orientation: portrait)');
 const isTouch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 if (isTouch) document.body.classList.add('touch');
+const DPR = () => Math.min(window.devicePixelRatio || 1, 2);
 
 function applyLayout() {
   ({ W, H, GROUND_Y, SHOULDER, PAN, DEBRIS_X } = LAYOUTS[portraitMQ.matches ? 'portrait' : 'landscape']);
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = DPR();
   canvas.width = W * dpr; canvas.height = H * dpr;      // 重設尺寸會清掉 transform，之後再設
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
@@ -122,9 +152,18 @@ let best = +localStorage.getItem('sweep-best') || 0;
 let hand = { x: 330, y: 255 };
 let mouse = { x: 330, y: 255 };
 let targetAngle = 0;
+let lastBuzz = 0;
 const keys = {};
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// 把手的目標點限制在手臂搆得到的範圍內
+function reachClamp(x, y) {
+  const dx = x - SHOULDER.x, dy = y - SHOULDER.y, d = Math.hypot(dx, dy) || 1;
+  if (d > REACH) { x = SHOULDER.x + dx / d * REACH; y = SHOULDER.y + dy / d * REACH; }
+  if (d < 40) { x = SHOULDER.x + dx / d * 40; y = SHOULDER.y + dy / d * 40; }
+  return { x, y: Math.min(y, GROUND_Y - 14) };
+}
 
 // ---------- 建世界 ----------
 function buildWorld() {
@@ -220,14 +259,12 @@ portraitMQ.addEventListener('change', () => {
   if (state === 'playing') startGame(); else buildWorld();
 });
 
-// ---------- 輸入 ----------
+// ---------- 輸入：滑鼠／鍵盤 ----------
 function toCanvas(cx, cy) {
   const r = canvas.getBoundingClientRect();
   return { x: (cx - r.left) * W / r.width, y: (cy - r.top) * H / r.height };
 }
 const wrap = $('wrap');
-
-// 滑鼠：游標位置就是手的目標
 wrap.addEventListener('pointermove', e => {
   if (e.pointerType === 'mouse') mouse = toCanvas(e.clientX, e.clientY);
 });
@@ -235,7 +272,7 @@ wrap.addEventListener('wheel', e => {
   e.preventDefault();
   targetAngle += Math.sign(e.deltaY) * 0.11;
 }, { passive: false });
-wrap.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('contextmenu', e => { if (e.target.closest('#game')) e.preventDefault(); });
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -244,69 +281,72 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-// 觸控（手指／觸控筆）：
-//   滑動 = 移動手（相對位移，手指不必蓋在手上）
-//   單點左／右半邊 = 掃把頭往左／右擺一格
-//   長按左／右半邊 = 持續轉手腕；每根手指獨立判斷，可一指滑、一指按
-const HOLD_MS = 300, MOVE_PX = 10, TAP_STEP = 0.12, HOLD_STEP = 0.03, DRAG_GAIN = 1.25;
-const touches = new Map();                 // pointerId -> 手勢狀態
-// 掃把頭在柄的 +y 端；角度減少 → 頭往右，角度增加 → 頭往左
-const headDir = clientX => {
-  const r = canvas.getBoundingClientRect();
-  return clientX < r.left + r.width / 2 ? +1 : -1;
-};
-canvas.addEventListener('pointerdown', e => {
-  if (e.pointerType === 'mouse') return;
-  e.preventDefault();
-  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
-  const t = { x0: e.clientX, y0: e.clientY, lx: e.clientX, ly: e.clientY, mode: 'pending', dir: headDir(e.clientX), timer: 0 };
-  t.timer = setTimeout(() => { if (t.mode === 'pending') t.mode = 'hold'; }, HOLD_MS);
-  touches.set(e.pointerId, t);
-});
-canvas.addEventListener('pointermove', e => {
-  const t = touches.get(e.pointerId);
-  if (!t) return;
-  if (t.mode === 'pending' && Math.hypot(e.clientX - t.x0, e.clientY - t.y0) > MOVE_PX) {
-    t.mode = 'drag'; clearTimeout(t.timer);
-  }
-  if (t.mode === 'drag') {
-    const r = canvas.getBoundingClientRect(), k = W / r.width * DRAG_GAIN;
-    mouse.x = clamp(mouse.x + (e.clientX - t.lx) * k, 0, W);
-    mouse.y = clamp(mouse.y + (e.clientY - t.ly) * k, 0, H);
-  }
-  t.lx = e.clientX; t.ly = e.clientY;
-});
-function endTouch(e) {
-  const t = touches.get(e.pointerId);
-  if (!t) return;
-  clearTimeout(t.timer);
-  touches.delete(e.pointerId);
-  if (t.mode === 'pending') targetAngle += t.dir * TAP_STEP;   // 放開時還沒變成滑動或長按 → 單點
+// ---------- 輸入：觸控控制區 ----------
+const padC = $('pad'), pctx = padC.getContext('2d');
+const wristC = $('wrist'), wctx = wristC.getContext('2d');
+function fitCanvas(c, g) {
+  const r = c.getBoundingClientRect(), dpr = DPR();
+  c.width = Math.max(1, Math.round(r.width * dpr)); c.height = Math.max(1, Math.round(r.height * dpr));
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-canvas.addEventListener('pointerup', endTouch);
-canvas.addEventListener('pointercancel', endTouch);
-canvas.addEventListener('lostpointercapture', endTouch);
+new ResizeObserver(() => { fitCanvas(padC, pctx); fitCanvas(wristC, wctx); }).observe($('controls'));
+window.addEventListener('resize', () => { fitCanvas(padC, pctx); fitCanvas(wristC, wctx); });
+
+// 觸控板：板子的範圍＝手搆得到的範圍（絕對位置對應，像滑鼠一樣）
+const PAD_M = 16;
+const padRegion = () => ({ x0: SHOULDER.x - 30, x1: SHOULDER.x + REACH, y0: SHOULDER.y - 160, y1: GROUND_Y - 14 });
+function padToWorld(px, py, r) {
+  const g = padRegion();
+  const u = clamp((px - PAD_M) / (r.width - 2 * PAD_M), 0, 1), v = clamp((py - PAD_M - 10) / (r.height - 2 * PAD_M - 10), 0, 1);
+  return { x: g.x0 + u * (g.x1 - g.x0), y: g.y0 + v * (g.y1 - g.y0) };
+}
+function worldToPad(x, y, w, h) {
+  const g = padRegion();
+  return { x: PAD_M + (x - g.x0) / (g.x1 - g.x0) * (w - 2 * PAD_M), y: PAD_M + 10 + (y - g.y0) / (g.y1 - g.y0) * (h - 2 * PAD_M - 10) };
+}
+
+// 手腕滑桿：滑桿位置＝手腕角度；往右拖＝掃把頭往右
+const WRIST_M = 28;
+const wristTrack = r => ({ cx: r.width / 2, half: r.width / 2 - WRIST_M, y: r.height * 0.6 });
+
+function bindControl(el, onPoint) {
+  let active = null;
+  const apply = e => { const r = el.getBoundingClientRect(); onPoint(e.clientX - r.left, e.clientY - r.top, r); };
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    active = e.pointerId;
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    el.classList.add('on');
+    apply(e);
+  });
+  el.addEventListener('pointermove', e => { if (e.pointerId === active) apply(e); });
+  const end = e => { if (e.pointerId === active) { active = null; el.classList.remove('on'); } };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
+  return () => active !== null;
+}
+const padActive = bindControl(padC, (x, y, r) => { mouse = reachClamp(...Object.values(padToWorld(x, y, r))); });
+const wristActive = bindControl(wristC, (x, y, r) => {
+  const t = wristTrack(r);
+  targetAngle = -clamp((x - t.cx) / t.half, -1, 1) * ANGLE_LIMIT;
+});
 
 // ---------- 物理更新 ----------
 const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 function tick() {
   // 手的目標：游標位置，限制在手臂可及範圍內
-  let tx = mouse.x, ty = mouse.y;
-  const dx = tx - SHOULDER.x, dy = ty - SHOULDER.y, d = Math.hypot(dx, dy) || 1;
-  if (d > REACH) { tx = SHOULDER.x + dx / d * REACH; ty = SHOULDER.y + dy / d * REACH; }
-  if (d < 40) { tx = SHOULDER.x + dx / d * 40; ty = SHOULDER.y + dy / d * 40; }
-  ty = Math.min(ty, GROUND_Y - 14);
-  let mx = tx - hand.x, my = ty - hand.y;
+  const t = reachClamp(mouse.x, mouse.y);
+  let mx = t.x - hand.x, my = t.y - hand.y;
   const md = Math.hypot(mx, my);
   if (md > MAX_HAND_SPEED) { mx *= MAX_HAND_SPEED / md; my *= MAX_HAND_SPEED / md; }
   hand.x += mx; hand.y += my;
   grip.pointA.x = hand.x; grip.pointA.y = hand.y;
 
-  // 手腕旋轉：鍵盤 + 觸控長按
+  // 手腕旋轉
   const left = keys.KeyA || keys.KeyQ || keys.ArrowLeft, right = keys.KeyD || keys.KeyE || keys.ArrowRight;
   if (left) targetAngle -= 0.03;
   if (right) targetAngle += 0.03;
-  for (const t of touches.values()) if (t.mode === 'hold') targetAngle += t.dir * HOLD_STEP;
   targetAngle = Math.max(-ANGLE_LIMIT, Math.min(ANGLE_LIMIT, targetAngle));
   const err = wrapAngle(targetAngle - broom.angle);
   broom.torque = broom.inertia * (WRIST_STRENGTH * err - WRIST_DAMP * broom.angularVelocity) / STEP2;
@@ -328,7 +368,13 @@ function tick() {
 
   if (state === 'playing') {
     timeLeft -= STEP / 1000;
-    score = debris.filter(inPan).length;
+    const s = debris.filter(inPan).length;
+    // 有東西掃進畚箕時輕震一下（Android 支援；iOS 會略過）
+    if (s > score && isTouch && navigator.vibrate) {
+      const now = performance.now();
+      if (now - lastBuzz > 90) { lastBuzz = now; try { navigator.vibrate(12); } catch (_) {} }
+    }
+    score = s;
     if (timeLeft <= 0) { timeLeft = 0; endGame(); }
   }
 }
@@ -493,20 +539,74 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(28, 66, barW, 4);
   ctx.fillStyle = frac < 0.2 ? '#ff5e5e' : '#f0a03c'; ctx.fillRect(28, 66, barW * frac, 4);
 
-  // 手臂可及範圍與目標游標
+  // 手臂可及範圍與目標游標（觸控時畫在實際搆得到的位置）
   ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.setLineDash([5, 6]); ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(SHOULDER.x, SHOULDER.y, REACH, -1.6, 1.7); ctx.stroke(); ctx.setLineDash([]);
+  const m = isTouch ? reachClamp(mouse.x, mouse.y) : mouse;
   ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 7, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(mouse.x - 11, mouse.y); ctx.lineTo(mouse.x + 11, mouse.y);
-  ctx.moveTo(mouse.x, mouse.y - 11); ctx.lineTo(mouse.x, mouse.y + 11); ctx.stroke();
-
-  // 觸控：長按時標示轉動方向
-  for (const t of touches.values()) if (t.mode === 'hold') {
-    ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = 'bold 28px system-ui, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(t.dir > 0 ? '⟲ 掃把頭往左' : '⟳ 掃把頭往右', W / 2, 110);
-  }
+  ctx.beginPath(); ctx.arc(m.x, m.y, 7, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(m.x - 11, m.y); ctx.lineTo(m.x + 11, m.y);
+  ctx.moveTo(m.x, m.y - 11); ctx.lineTo(m.x, m.y + 11); ctx.stroke();
 }
+
+// 觸控板：畫出手搆得到的範圍、地面、手與目標點、掃把方向
+function drawPad() {
+  const w = padC.width / DPR(), h = padC.height / DPR(), g = pctx;
+  g.clearRect(0, 0, w, h);
+  const on = padActive();
+  const P = (x, y) => worldToPad(x, y, w, h);
+  // 可及範圍
+  g.beginPath();
+  for (let a = -Math.PI; a <= Math.PI + 0.01; a += 0.05) {
+    const q = reachClamp(SHOULDER.x + Math.cos(a) * REACH, SHOULDER.y + Math.sin(a) * REACH);
+    const p = P(q.x, q.y);
+    a === -Math.PI ? g.moveTo(p.x, p.y) : g.lineTo(p.x, p.y);
+  }
+  g.closePath();
+  g.fillStyle = on ? 'rgba(240,160,60,.16)' : 'rgba(255,255,255,.06)'; g.fill();
+  g.strokeStyle = 'rgba(255,255,255,.25)'; g.setLineDash([4, 5]); g.lineWidth = 1; g.stroke(); g.setLineDash([]);
+  // 地面
+  const gy = P(0, GROUND_Y - 14).y;
+  g.strokeStyle = 'rgba(201,188,163,.7)'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(8, gy + 4); g.lineTo(w - 8, gy + 4); g.stroke();
+  // 肩膀
+  const s = P(SHOULDER.x, SHOULDER.y);
+  g.fillStyle = '#4b5566'; g.beginPath(); g.arc(s.x, s.y, 6, 0, Math.PI * 2); g.fill();
+  // 手與掃把方向
+  const hp = P(hand.x, hand.y), L = Math.min(w, h) * 0.32;
+  g.strokeStyle = '#c8322b'; g.lineWidth = 3; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(hp.x + Math.sin(broom.angle) * L * 0.5, hp.y - Math.cos(broom.angle) * L * 0.5);
+  g.lineTo(hp.x - Math.sin(broom.angle) * L, hp.y + Math.cos(broom.angle) * L); g.stroke();
+  g.fillStyle = '#e8b894'; g.beginPath(); g.arc(hp.x, hp.y, 7, 0, Math.PI * 2); g.fill();
+  // 目標點
+  const t = reachClamp(mouse.x, mouse.y), tp = P(t.x, t.y);
+  g.strokeStyle = on ? '#f0a03c' : 'rgba(255,255,255,.7)'; g.lineWidth = 2;
+  g.beginPath(); g.arc(tp.x, tp.y, on ? 14 : 10, 0, Math.PI * 2); g.stroke();
+}
+
+// 手腕滑桿：軌道、中心刻度、旋鈕（旋鈕裡的小掃把＝目標角度）
+function drawWrist() {
+  const w = wristC.width / DPR(), h = wristC.height / DPR(), g = wctx;
+  g.clearRect(0, 0, w, h);
+  const on = wristActive(), t = wristTrack({ width: w, height: h });
+  g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 8; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(t.cx - t.half, t.y); g.lineTo(t.cx + t.half, t.y); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(t.cx, t.y - 14); g.lineTo(t.cx, t.y + 14); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.font = '12px system-ui, sans-serif';
+  g.textAlign = 'left'; g.fillText('◀ 左', t.cx - t.half - 6, t.y + 34);
+  g.textAlign = 'right'; g.fillText('右 ▶', t.cx + t.half + 6, t.y + 34);
+  // 實際掃把角度（淡色）與目標角度（旋鈕）
+  const kx = a => t.cx - clamp(a / ANGLE_LIMIT, -1, 1) * t.half;
+  g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.arc(kx(broom.angle), t.y, 5, 0, Math.PI * 2); g.fill();
+  const x = kx(targetAngle), R = on ? 22 : 19;
+  g.fillStyle = on ? '#ffb85c' : '#f0a03c'; g.beginPath(); g.arc(x, t.y, R, 0, Math.PI * 2); g.fill();
+  g.save(); g.translate(x, t.y); g.rotate(targetAngle);
+  g.fillStyle = '#7a1d18'; g.fillRect(-1.5, -R * 0.7, 3, R * 1.05);
+  g.fillStyle = '#5f4120'; g.fillRect(-R * 0.45, R * 0.3, R * 0.9, R * 0.28);
+  g.restore();
+}
+
 function draw() {
   drawBackground();
   drawPan();
@@ -515,6 +615,7 @@ function draw() {
   drawBroom();
   drawPuffs();
   drawHUD();
+  if (isTouch) { drawPad(); drawWrist(); }
 }
 
 // ---------- 主迴圈 ----------
@@ -527,6 +628,7 @@ function frame(now) {
 }
 applyLayout();
 buildWorld();
+if (isTouch) { fitCanvas(padC, pctx); fitCanvas(wristC, wctx); }
 requestAnimationFrame(frame);
 })();
 </script>
